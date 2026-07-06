@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Atlas — Cell-State Transitions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#eef1f5;
+    --bg-panel:#ffffff;
+    --ink:#161b22;
+    --ink-soft:#525b68;
+    --ink-faint:#8992a0;
+    --line:#d7dde5;
+    --line-strong:#b7c0cc;
+    --indigo:#223a70;
+    --indigo-soft:#3d5590;
+    --teal:#187a68;
+    --teal-bg:#e2f2ee;
+    --rust:#9c3040;
+    --rust-bg:#f7e6e8;
+    --amber:#a86f1f;
+    --amber-bg:#f6ecd8;
+    --grey-edge:#9aa3ae;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:13.5px;overflow:hidden;}
+  ::selection{background:#c9d6ef;}
+  .mono{font-family:"IBM Plex Mono",monospace;}
+
+  /* ---------- App shell: header / framing / layer-tabs (fixed) + main (fills rest) + filter strip (fixed) ---------- */
+  .app{display:flex;flex-direction:column;height:100vh;}
+
+  header{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:16px;
+    padding:10px 20px;background:var(--indigo);color:#eef1f5;
+    border-bottom:3px solid #16294f;
+  }
+  .wordmark{font-family:"Source Serif 4",serif;font-weight:700;font-size:19px;
+    display:flex;align-items:baseline;gap:8px;flex:0 0 auto;white-space:nowrap;}
+  .wordmark .tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:500;
+    color:#aebbe0;letter-spacing:1.1px;text-transform:uppercase;border:1px solid #4a5f96;
+    padding:2px 6px;border-radius:20px;}
+
+  .search{
+    flex:1 1 auto;max-width:460px;display:flex;align-items:center;gap:7px;
+    background:#2c4577;border:1px solid #4a5f96;border-radius:8px;padding:6px 11px;
+    min-width:0;
+  }
+  .search svg{flex:0 0 14px;width:14px;height:14px;display:block;}
+  .search input{
+    background:transparent;border:none;outline:none;color:#fff;width:100%;font-size:13px;
+    font-family:"IBM Plex Sans",sans-serif;min-width:0;
+  }
+  .search input::placeholder{color:#a9b6d6;}
+
+  .mode-toggle{
+    display:flex;background:#16294f;border-radius:8px;padding:3px;gap:2px;flex:0 0 auto;
+  }
+  .mode-toggle button{
+    border:none;background:transparent;color:#b8c3de;font-family:"IBM Plex Sans",sans-serif;
+    font-size:12px;font-weight:500;padding:6px 12px;border-radius:6px;cursor:pointer;
+  }
+  .mode-toggle button.active{background:#eef1f5;color:var(--indigo);font-weight:600;}
+
+  .framing{
+    flex:0 0 auto;
+    padding:11px 20px;border-bottom:1px solid var(--line);background:var(--bg-panel);
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  }
+  .framing h1{font-family:"Source Serif 4",serif;font-size:17px;margin:0 0 2px 0;font-weight:600;}
+  .framing p{margin:0;color:var(--ink-soft);font-size:12px;max-width:600px;}
+  .framing .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;
+    letter-spacing:1.2px;color:var(--teal);font-weight:500;display:block;margin-bottom:3px;
+  }
+  #predict-form{display:none;gap:8px;align-items:center;font-size:12px;flex-wrap:wrap;}
+  #predict-form select{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:6px 8px;border-radius:6px;
+    border:1px solid var(--line-strong);background:#fbfcfd;color:var(--ink);max-width:220px;
+  }
+  #predict-form .arrow{color:var(--ink-faint);}
+  #predict-form button{
+    font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:12px;
+    background:var(--indigo);color:#fff;border:none;border-radius:6px;padding:7px 13px;cursor:pointer;
+  }
+
+  .layer-tabs{
+    flex:0 0 auto;
+    display:flex;gap:2px;padding:8px 20px 0 20px;background:var(--bg-panel);
+    border-bottom:1px solid var(--line);
+  }
+  .layer-tab{
+    font-size:12px;font-weight:600;padding:8px 14px;cursor:pointer;color:var(--ink-faint);
+    border-bottom:2.5px solid transparent;white-space:nowrap;
+  }
+  .layer-tab.active{color:var(--indigo);border-bottom-color:var(--indigo);}
+
+  /* main 3-pane layout — fills remaining space, internal panes scroll, page never scrolls */
+  main{flex:1 1 auto;display:flex;min-height:0;overflow:hidden;}
+
+  .pane-left{
+    width:220px;flex:0 0 220px;background:var(--bg-panel);border-right:1px solid var(--line);
+    overflow-y:auto;padding:12px 0 20px 0;min-height:0;
+  }
+  .pane-title{
+    font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;
+    letter-spacing:1.1px;color:var(--ink-faint);padding:0 14px 8px 14px;
+  }
+  .tree-node{padding:5px 14px;cursor:pointer;font-size:12.3px;line-height:1.35;}
+  .tree-node.tissue{font-weight:600;color:var(--indigo);padding-top:10px;}
+  .tree-node.disease{padding-left:22px;color:var(--ink-soft);font-size:11.5px;}
+  .tree-node.state{padding-left:32px;border-radius:6px;margin:0 6px;}
+  .tree-node.state:hover{background:#eef1f5;}
+  .tree-node.state.selected{background:var(--teal-bg);color:var(--teal);font-weight:600;}
+  .tree-node.state .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;flex:0 0 auto;}
+
+  .pane-center{
+    flex:1 1 auto;position:relative;background:
+      radial-gradient(circle at 18% 15%, #f6f8fa 0%, var(--bg) 60%);
+    display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;
+  }
+  .map-toolbar{
+    flex:0 0 auto;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:6px;
+  }
+  .map-toolbar .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--ink-soft);}
+  .legend-item{display:flex;align-items:center;gap:4px;}
+  .legend-swatch{width:15px;height:3px;border-radius:2px;display:inline-block;}
+  .legend-swatch.dashed{background:none;border-top:2px dashed var(--grey-edge);height:0;width:15px;}
+
+  .layer-content{flex:1 1 auto;min-height:0;position:relative;overflow:auto;}
+  .layer-view{display:none;width:100%;height:100%;}
+  .layer-view.active{display:block;}
+  #view-transcriptomic.active{display:flex;}
+  .graph-svg{width:100%;height:100%;display:block;min-height:380px;}
+
+  .state-node circle{fill:var(--bg-panel);stroke-width:2.5;cursor:pointer;}
+  .state-node.selected circle{stroke-width:4;}
+  .state-node text.icon{font-size:15px;pointer-events:none;}
+  .state-node text.label{font-family:"Source Serif 4",serif;font-size:11.5px;font-weight:600;
+    fill:var(--ink);pointer-events:none;}
+  .state-node text.sub{font-family:"IBM Plex Mono",monospace;font-size:8.3px;
+    fill:var(--ink-faint);pointer-events:none;}
+
+  .edge-path{fill:none;cursor:pointer;}
+  .edge-hit{fill:none;stroke:transparent;stroke-width:16;cursor:pointer;}
+  .edge-path.selected{stroke-width:4.5 !important;}
+  .edge-chip-bg{fill:white;stroke:var(--line-strong);stroke-width:1;}
+  .edge-chip-text{font-family:"IBM Plex Mono",monospace;font-size:8.6px;fill:var(--ink-soft);pointer-events:none;}
+  .dim{opacity:0.15;}
+
+  .landscape-caption-top{
+    font-size:11.8px;color:var(--ink-soft);padding:10px 16px 0 16px;max-width:760px;
+  }
+  .planned-badge{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;
+    background:var(--rust-bg);color:var(--rust);padding:2px 8px;border-radius:20px;margin-left:6px;}
+  .epi-subtabs{display:flex;gap:8px;padding:10px 16px 0 16px;flex-wrap:wrap;}
+  .epi-subtab{
+    font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:20px;
+    border:1.5px solid var(--line-strong);cursor:pointer;color:var(--ink-soft);background:#fff;
+  }
+  .epi-subtab.active{background:var(--indigo);color:#fff;border-color:var(--indigo);}
+  .epi-subtab .planned-badge{margin-left:6px;}
+  .epi-panel{display:none;}
+  .epi-panel.active{display:block;}
+
+  .landscape-wrap{padding:10px 16px 18px 16px;}
+  .landscape-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .ls-btn{
+    font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:6px;
+    border:1.5px solid var(--line-strong);background:#fff;color:var(--ink-soft);cursor:pointer;
+  }
+  .ls-btn.active{background:var(--indigo);color:#fff;border-color:var(--indigo);}
+  .ls-hint{font-size:10.8px;color:var(--ink-faint);font-family:"IBM Plex Mono",monospace;}
+  .ls-canvas-wrap{
+    display:flex;justify-content:center;background:#f6f8fa;border-radius:10px;
+    border:1px solid var(--line);padding:8px;
+  }
+  .ls-canvas-wrap canvas{
+    width:100%;max-width:600px;height:auto;display:block;border-radius:6px;
+    background:#fff;cursor:grab;touch-action:none;
+  }
+  .ls-canvas-wrap canvas:active{cursor:grabbing;}
+  .ls-caption{font-size:11.3px;color:var(--ink-faint);margin:8px 4px 0 4px;max-width:640px;}
+
+  .iso-wrap{
+    display:flex;justify-content:center;background:#f6f8fa;border-radius:10px;
+    border:1px solid var(--line);padding:8px;
+  }
+  .iso-svg{width:100%;max-width:600px;height:auto;display:block;background:#fff;border-radius:6px;}
+
+  .epi-mock{
+    position:relative;border:1px solid var(--line);border-radius:10px;background:#fff;
+    padding:16px;overflow:hidden;
+  }
+  .epi-mock .watermark{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-16deg);
+    font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:34px;color:var(--rust);
+    opacity:0.11;pointer-events:none;white-space:nowrap;
+  }
+  .epi-track{margin-bottom:16px;position:relative;}
+  .epi-track .epi-track-label{font-size:11.3px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .epi-bars{display:flex;align-items:flex-end;gap:3px;height:44px;}
+  .epi-bars span{flex:1;border-radius:2px 2px 0 0;background:var(--teal);opacity:.68;}
+
+  .pane-right{
+    width:305px;flex:0 0 305px;background:var(--bg-panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;
+  }
+  .tabs{flex:0 0 auto;display:flex;border-bottom:1px solid var(--line);}
+  .tab{
+    flex:1;text-align:center;padding:9px 4px;font-size:11.5px;font-weight:600;cursor:pointer;
+    color:var(--ink-faint);border-bottom:2px solid transparent;
+  }
+  .tab.active{color:var(--indigo);border-bottom-color:var(--indigo);}
+  .tab-body{flex:1 1 auto;overflow-y:auto;padding:14px;min-height:0;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .drawer-title{font-family:"Source Serif 4",serif;font-size:15.5px;font-weight:600;margin:0 0 2px 0;line-height:1.3;}
+  .drawer-sub{font-size:11px;color:var(--ink-faint);margin:0 0 12px 0;}
+  .kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);
+    font-size:11.8px;gap:8px;}
+  .kv .k{color:var(--ink-soft);}
+  .kv .v{font-family:"IBM Plex Mono",monospace;font-weight:500;text-align:right;}
+  .badge{display:inline-block;font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;
+    font-family:"IBM Plex Mono",monospace;letter-spacing:.3px;}
+  .conf-bar-wrap{background:#eef1f5;border-radius:6px;height:7px;margin-top:5px;overflow:hidden;}
+  .conf-bar{height:100%;border-radius:6px;}
+
+  .prog-row{margin-bottom:10px;}
+  .prog-row .prow-top{display:flex;justify-content:space-between;font-size:11.3px;margin-bottom:3px;gap:6px;}
+  .prow-top .name{color:var(--ink-soft);}
+  .prow-top .val{font-family:"IBM Plex Mono",monospace;flex:0 0 auto;}
+  .prog-track{background:#eef1f5;border-radius:5px;height:6px;overflow:hidden;}
+  .prog-fill{height:100%;border-radius:5px;background:var(--indigo-soft);}
+
+  .evidence-item{padding:9px 0;border-bottom:1px solid var(--line);font-size:11.6px;}
+  .evidence-item .e-title{font-weight:600;margin-bottom:2px;}
+  .evidence-item .e-meta{color:var(--ink-faint);font-family:"IBM Plex Mono",monospace;font-size:10px;}
+  .empty-hint{color:var(--ink-faint);font-size:12px;padding:20px 4px;text-align:center;line-height:1.6;}
+
+  .filter-strip{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--line);
+    background:var(--bg-panel);flex-wrap:wrap;
+  }
+  .filter-strip .fs-label{font-family:"IBM Plex Mono",monospace;font-size:10px;
+    text-transform:uppercase;letter-spacing:1px;color:var(--ink-faint);}
+  .chip{
+    font-size:11.5px;padding:5px 11px;border-radius:20px;border:1.5px solid var(--line-strong);
+    cursor:pointer;background:#fff;color:var(--ink-soft);font-weight:500;
+  }
+  .chip.on{color:#fff;border-color:transparent;}
+  .chip[data-cat="inducer"].on{background:var(--teal);}
+  .chip[data-cat="suppressor"].on{background:var(--rust);}
+  .chip[data-cat="growth"].on{background:var(--amber);}
+  .chip[data-cat="drift"].on{background:var(--grey-edge);}
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#c7cfd9;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="wordmark">Atlas <span class="tag">cell-state transitions</span></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#a9b6d6" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="#a9b6d6" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="search-input" placeholder="Search a state, disease, or intervention…">
+    </div>
+    <div class="mode-toggle">
+      <button id="mode-browse" class="active">Browse</button>
+      <button id="mode-predict">Predict</button>
+    </div>
+  </header>
+
+  <div class="framing" id="framing-browse">
+    <div>
+      <span class="eyebrow">Atlas layer</span>
+      <h1>Browse cell-state landscapes</h1>
+      <p>Dermal-fibroblast fibrosis &amp; reprogramming model — explore observed transitions and the interventions that induce them.</p>
+    </div>
+  </div>
+  <div class="framing" id="framing-predict" style="display:none;">
+    <div>
+      <span class="eyebrow">Engine layer</span>
+      <h1>Predict interventions for a state shift</h1>
+      <p>Pick a source and a target state — the engine ranks interventions most likely to induce that shift, with confidence and evidence.</p>
+    </div>
+    <div id="predict-form">
+      <select id="predict-source"></select>
+      <span class="arrow">→</span>
+      <select id="predict-target"></select>
+      <button id="predict-run">Rank interventions</button>
+    </div>
+  </div>
+
+  <div class="layer-tabs">
+    <div class="layer-tab active" data-layer="transcriptomic">Transcriptomic map</div>
+    <div class="layer-tab" data-layer="atac">Chromatin accessibility (ATAC)</div>
+    <div class="layer-tab" data-layer="epigenetic">Epigenetic marks<span class="planned-badge">mockup</span></div>
+  </div>
+
+  <main>
+    <div class="pane-left">
+      <div class="pane-title">Atlas layer</div>
+      <div class="tree-node tissue">Dermal fibroblast model</div>
+      <div class="tree-node disease">Fibrotic activation (TGF-β driven)</div>
+      <div class="tree-node state" data-state="healthy"><span class="dot" style="background:#2f8f5b"></span>Quiescent fibroblast</div>
+      <div class="tree-node state" data-state="diseased"><span class="dot" style="background:#9c3040"></span>TGF-β–activated myofibroblast</div>
+      <div class="tree-node state" data-state="senescent"><span class="dot" style="background:#a86f1f"></span>p16⁺ senescent fibroblast</div>
+      <div class="tree-node state" data-state="resistant"><span class="dot" style="background:#8992a0"></span>Apoptosis-resistant fibroblast</div>
+      <div class="tree-node disease">Cellular reprogramming context</div>
+      <div class="tree-node state" data-state="stemlike"><span class="dot" style="background:#3d5590"></span>iPSC-like progenitor</div>
+      <div class="tree-node state" data-state="reprogrammed"><span class="dot" style="background:#187a68"></span>Partially reprogrammed fibroblast</div>
+    </div>
+
+    <div class="pane-center">
+      <div class="map-toolbar">
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background:#187a68"></span>Inducer</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#9c3040"></span>Suppressor</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#a86f1f"></span>Growth factor</span>
+          <span class="legend-item"><span class="legend-swatch dashed"></span>Untreated drift</span>
+          <span class="legend-item">🔓 reversible · 🔒 low reversibility</span>
+        </div>
+        <div class="mono" style="font-size:10.5px;color:var(--ink-faint);">6 states · 7 transitions</div>
+      </div>
+      <div class="layer-content">
+        <div id="view-transcriptomic" class="layer-view active"></div>
+        <div id="view-atac" class="layer-view">
+          <div class="landscape-caption-top">
+            Same state manifold, viewed as a chromatin-accessibility surface. Contour bands are isotherms of equal openness; arrows mark regulatory modules opening or closing ahead of the transcriptomic shift — e.g. the <em>POU5F1 (OCT4)</em> enhancer priming open before the senescent → reprogrammed RNA shift becomes visible.
+          </div>
+          <div id="atac-mount"></div>
+        </div>
+        <div id="view-epigenetic" class="layer-view">
+          <div class="epi-subtabs">
+            <div class="epi-subtab active" data-epi="acetylation">Histone acetylation<span class="planned-badge">mockup</span></div>
+            <div class="epi-subtab" data-epi="methylation">DNA methylation<span class="planned-badge">mockup</span></div>
+          </div>
+          <div id="epi-acetylation-mount" class="epi-panel active"></div>
+          <div id="epi-methylation-mount" class="epi-panel"></div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="pane-right">
+      <div class="tabs">
+        <div class="tab active" data-tab="transition">Transition</div>
+        <div class="tab" data-tab="mechanism">Mechanism</div>
+        <div class="tab" data-tab="evidence">Evidence</div>
+      </div>
+      <div class="tab-body">
+        <div class="tab-panel active" id="panel-transition">
+          <div class="empty-hint">Click a state to inspect it, or click a transition arrow to load a prediction.</div>
+        </div>
+        <div class="tab-panel" id="panel-mechanism">
+          <div class="empty-hint">Mechanism evidence appears here once you select a transition.</div>
+        </div>
+        <div class="tab-panel" id="panel-evidence">
+          <div class="empty-hint">Supporting methods/references appear here once you select a transition.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="filter-strip">
+    <span class="fs-label">Intervention layer</span>
+    <div class="chip on" data-cat="inducer">Inducer compounds</div>
+    <div class="chip on" data-cat="suppressor">Suppressors</div>
+    <div class="chip on" data-cat="growth">Growth factors</div>
+    <div class="chip on" data-cat="drift">Untreated drift</div>
+  </div>
+</div>
+
+<script>
+/* ---------------- mock data (concrete, real biology) ---------------- */
+const states = {
+  healthy:      {label:"Quiescent fibroblast",              x:150, y:110, color:"#2f8f5b", icon:"🍃", sub:"0.90"},
+  stemlike:     {label:"iPSC-like progenitor",               x:130, y:330, color:"#3d5590", icon:"★", sub:"0.72"},
+  diseased:     {label:"TGF-β–activated myofibroblast",      x:640, y:100, color:"#9c3040", icon:"⚠", sub:"0.85"},
+  senescent:    {label:"p16⁺ senescent fibroblast",          x:610, y:360, color:"#a86f1f", icon:"⏳", sub:"0.65"},
+  resistant:    {label:"Apoptosis-resistant fibroblast",     x:370, y:230, color:"#8992a0", icon:"🛡", sub:"0.48"},
+  reprogrammed: {label:"Partially reprogrammed fibroblast",  x:620, y:230, color:"#187a68", icon:"↺", sub:"0.58"},
+};
+
+const edges = [
+  {id:"e1", src:"diseased", dst:"healthy", cat:"inducer",
+    name:"Nintedanib (tyrosine-kinase inhibitor, anti-fibrotic)", prob:0.62, conf:0.71, rev:"Reversible",
+    mech:[["TGF-β / SMAD signaling",0.71],["Collagen synthesis (COL1A1 / COL3A1)",0.44],["Chromatin openness — COL1A1 enhancer module",0.38]],
+    evid:[["cSTAR — control of cell-state transitions","landscape / control-theory framing"],
+          ["Nintedanib — approved anti-fibrotic (IPF)","tyrosine-kinase inhibition, INPULSIS trials"]]},
+  {id:"e2", src:"diseased", dst:"resistant", cat:"drift",
+    name:"Untreated TGF-β signaling (chronic activation)", prob:0.35, conf:0.40, rev:"Partially reversible",
+    mech:[["TGF-β / SMAD signaling",0.58],["NF-κB inflammatory program",0.51],["Chromatin openness — TIMP1 promoter module",0.46]],
+    evid:[["Chromatin potential (ATAC trajectory inference)","accessibility precedes transcription"],
+          ["Mini-review: perturbation modeling across omics","field positioning"]]},
+  {id:"e3", src:"senescent", dst:"reprogrammed", cat:"growth",
+    name:"Transient OSKM induction (partial Yamanaka-factor reprogramming)", prob:0.48, conf:0.55, rev:"Reversible (slow)",
+    mech:[["SASP (senescence-associated secretory phenotype)",0.63],["Stemness program (OCT4/SOX2/KLF4 targets)",0.40],["Chromatin openness — POU5F1 (OCT4) enhancer module",0.35]],
+    evid:[["CellCap — interpretable perturbation programs","cell-state + perturbation latent programs"],
+          ["CellRank 2 — unified fate mapping","fate-mapping layer"]]},
+  {id:"e4", src:"healthy", dst:"senescent", cat:"drift",
+    name:"Doxorubicin-induced senescence (genotoxic stress)", prob:0.20, conf:0.33, rev:"Slowly reversible",
+    mech:[["p16^INK4a / CDKN2A program",0.47],["SASP",0.29]],
+    evid:[["Mini-review: perturbation modeling across omics","field positioning"]]},
+  {id:"e5", src:"stemlike", dst:"healthy", cat:"inducer",
+    name:"BMP4-induced differentiation", prob:0.70, conf:0.66, rev:"Reversible",
+    mech:[["Stemness program",0.55],["Wnt / repair program",0.49]],
+    evid:[["cSTAR — control of cell-state transitions","landscape / control-theory framing"]]},
+  {id:"e6", src:"resistant", dst:"diseased", cat:"suppressor",
+    name:"IL-6 / IL-1β relapse signaling", prob:0.40, conf:0.44, rev:"Low reversibility",
+    mech:[["NF-κB inflammatory program",0.60],["TGF-β / SMAD signaling",0.42]],
+    evid:[["Cycle-consistency drug-response model","latent-space drug-response prediction"]]},
+  {id:"e7", src:"reprogrammed", dst:"stemlike", cat:"inducer",
+    name:"Full OSKM reprogramming (Oct4 / Sox2 / Klf4 / Myc)", prob:0.55, conf:0.50, rev:"Reversible",
+    mech:[["Stemness program",0.62],["Chromatin openness — NANOG enhancer module",0.57]],
+    evid:[["CellCap — interpretable perturbation programs","cell-state + perturbation latent programs"]]},
+];
+
+const catColor = {inducer:"#187a68", suppressor:"#9c3040", growth:"#a86f1f", drift:"#9aa3ae"};
+const catDashed = {drift:true};
+const reversibleCats = ["Reversible","Reversible (slow)"];
+
+/* ---------------- build SVG map ---------------- */
+const svgNS = "http://www.w3.org/2000/svg";
+const svg = document.createElementNS(svgNS, "svg");
+svg.setAttribute("viewBox", "0 0 800 440");
+svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+svg.setAttribute("class", "graph-svg");
+document.getElementById("view-transcriptomic").appendChild(svg);
+
+function bezierPoint(t, x1,y1,cx,cy,x2,y2){
+  const mt = 1-t;
+  return {
+    x: mt*mt*x1 + 2*mt*t*cx + t*t*x2,
+    y: mt*mt*y1 + 2*mt*t*cy + t*t*y2,
+  };
+}
+function curveGeom(x1,y1,x2,y2){
+  const mx = (x1+x2)/2, my = (y1+y2)/2;
+  const dx = x2-x1, dy = y2-y1;
+  const nx = -dy, ny = dx;
+  const len = Math.hypot(nx,ny) || 1;
+  const bend = 28;
+  const cx = mx + (nx/len)*bend, cy = my + (ny/len)*bend;
+  return {cx, cy, path:`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`};
+}
+
+// arrow markers per category
+const defs = document.createElementNS(svgNS,"defs");
+Object.entries(catColor).forEach(([cat,color])=>{
+  const marker = document.createElementNS(svgNS,"marker");
+  marker.setAttribute("id",`arrow-${cat}`);
+  marker.setAttribute("viewBox","0 0 10 10");
+  marker.setAttribute("refX","8.5"); marker.setAttribute("refY","5");
+  marker.setAttribute("markerWidth","8"); marker.setAttribute("markerHeight","8");
+  marker.setAttribute("orient","auto");
+  const p = document.createElementNS(svgNS,"path");
+  p.setAttribute("d","M0,0 L10,5 L0,10 z");
+  p.setAttribute("fill", color);
+  marker.appendChild(p);
+  defs.appendChild(marker);
+});
+svg.appendChild(defs);
+
+edges.forEach(e=>{
+  const s = states[e.src], d = states[e.dst];
+  const geom = curveGeom(s.x, s.y, d.x, d.y);
+
+  const hit = document.createElementNS(svgNS,"path");
+  hit.setAttribute("d", geom.path);
+  hit.setAttribute("class","edge-hit");
+  svg.appendChild(hit);
+
+  const line = document.createElementNS(svgNS,"path");
+  line.setAttribute("d", geom.path);
+  line.setAttribute("class","edge-path");
+  line.dataset.edge = e.id;
+  line.dataset.cat = e.cat;
+  line.setAttribute("stroke", catColor[e.cat]);
+  line.setAttribute("stroke-width","2.6");
+  line.setAttribute("marker-end", `url(#arrow-${e.cat})`);
+  if(catDashed[e.cat]) line.setAttribute("stroke-dasharray","6 5");
+  svg.appendChild(line);
+
+  // probability + reversibility chip at path midpoint
+  const mid = bezierPoint(0.5, s.x, s.y, geom.cx, geom.cy, d.x, d.y);
+  const lockIcon = reversibleCats.includes(e.rev) ? "🔓" : "🔒";
+  const chipText = `${lockIcon} ${Math.round(e.prob*100)}%`;
+  const chipW = 40, chipH = 15;
+  const chipBg = document.createElementNS(svgNS,"rect");
+  chipBg.setAttribute("class","edge-chip-bg");
+  chipBg.setAttribute("x", mid.x - chipW/2);
+  chipBg.setAttribute("y", mid.y - chipH/2);
+  chipBg.setAttribute("width", chipW);
+  chipBg.setAttribute("height", chipH);
+  chipBg.setAttribute("rx", 7);
+  svg.appendChild(chipBg);
+  const chipTxt = document.createElementNS(svgNS,"text");
+  chipTxt.setAttribute("class","edge-chip-text");
+  chipTxt.setAttribute("x", mid.x);
+  chipTxt.setAttribute("y", mid.y + 3);
+  chipTxt.setAttribute("text-anchor","middle");
+  chipTxt.textContent = chipText;
+  svg.appendChild(chipTxt);
+
+  [hit,line,chipBg,chipTxt].forEach(el=>el.addEventListener("click", ()=>selectEdge(e.id)));
+});
+
+Object.entries(states).forEach(([key,s])=>{
+  const g = document.createElementNS(svgNS,"g");
+  g.setAttribute("class","state-node");
+  g.dataset.state = key;
+  g.setAttribute("transform",`translate(${s.x},${s.y})`);
+
+  const c = document.createElementNS(svgNS,"circle");
+  c.setAttribute("r","32");
+  c.setAttribute("stroke", s.color);
+  g.appendChild(c);
+
+  const icon = document.createElementNS(svgNS,"text");
+  icon.setAttribute("class","icon");
+  icon.setAttribute("text-anchor","middle");
+  icon.setAttribute("y","-38");
+  icon.textContent = s.icon;
+  g.appendChild(icon);
+
+  const label = document.createElementNS(svgNS,"text");
+  label.setAttribute("class","label");
+  label.setAttribute("text-anchor","middle");
+  label.setAttribute("y","5");
+  // wrap label into up to 2 lines by words
+  const words = s.label.split(" ");
+  const mid = Math.ceil(words.length/2);
+  const line1 = words.slice(0,mid).join(" ");
+  const line2 = words.slice(mid).join(" ");
+  const t1 = document.createElementNS(svgNS,"tspan"); t1.setAttribute("x",0); t1.setAttribute("dy","-2"); t1.textContent=line1;
+  const t2 = document.createElementNS(svgNS,"tspan"); t2.setAttribute("x",0); t2.setAttribute("dy","13"); t2.textContent=line2;
+  label.appendChild(t1); label.appendChild(t2);
+  g.appendChild(label);
+
+  const sub = document.createElementNS(svgNS,"text");
+  sub.setAttribute("class","sub");
+  sub.setAttribute("text-anchor","middle");
+  sub.setAttribute("y","46");
+  sub.textContent = `stability ${s.sub}`;
+  g.appendChild(sub);
+
+  g.addEventListener("click", ()=>selectNode(key));
+  svg.appendChild(g);
+});
+
+/* ---------------- interaction ---------------- */
+function clearSelection(){
+  document.querySelectorAll(".state-node").forEach(n=>n.classList.remove("selected"));
+  document.querySelectorAll(".edge-path").forEach(n=>n.classList.remove("selected"));
+}
+
+function selectNode(key){
+  clearSelection();
+  document.querySelector(`.state-node[data-state="${key}"]`).classList.add("selected");
+  document.querySelectorAll(".tree-node.state").forEach(n=>n.classList.remove("selected"));
+  const treeNode = document.querySelector(`.tree-node.state[data-state="${key}"]`);
+  if(treeNode) treeNode.classList.add("selected");
+
+  const s = states[key];
+  const out = edges.filter(e=>e.src===key);
+  const inn = edges.filter(e=>e.dst===key);
+
+  document.getElementById("panel-transition").innerHTML = `
+    <h3 class="drawer-title">${s.icon} ${s.label}</h3>
+    <p class="drawer-sub">State summary — atlas layer</p>
+    <div class="kv"><span class="k">Attractor stability</span><span class="v">${s.sub}</span></div>
+    <div class="kv"><span class="k">Outgoing transitions</span><span class="v">${out.length}</span></div>
+    <div class="kv"><span class="k">Incoming transitions</span><span class="v">${inn.length}</span></div>
+    <p style="margin-top:12px;font-size:11.8px;color:var(--ink-soft);">
+      Click an arrow touching this node to inspect a specific transition, its predicted probability, and supporting mechanism evidence.
+    </p>
+  `;
+  setTab("transition");
+  document.getElementById("panel-mechanism").innerHTML = `<div class="empty-hint">Select a transition to see its pathway / accessibility programs.</div>`;
+  document.getElementById("panel-evidence").innerHTML = `<div class="empty-hint">Select a transition to see supporting methods.</div>`;
+}
+
+function selectEdge(id){
+  clearSelection();
+  const e = edges.find(x=>x.id===id);
+  document.querySelector(`.edge-path[data-edge="${id}"]`).classList.add("selected");
+  document.querySelector(`.state-node[data-state="${e.src}"]`).classList.add("selected");
+  document.querySelector(`.state-node[data-state="${e.dst}"]`).classList.add("selected");
+
+  const s = states[e.src], d = states[e.dst];
+  const color = catColor[e.cat];
+  const lockIcon = reversibleCats.includes(e.rev) ? "🔓" : "🔒";
+
+  document.getElementById("panel-transition").innerHTML = `
+    <h3 class="drawer-title">${s.label} → ${d.label}</h3>
+    <p class="drawer-sub">Intervention: ${e.name}</p>
+    <span class="badge" style="background:${color}22;color:${color};">${e.cat.toUpperCase()}</span>
+    <div class="kv"><span class="k">Predicted probability</span><span class="v">${e.prob.toFixed(2)}</span></div>
+    <div class="conf-bar-wrap"><div class="conf-bar" style="width:${e.prob*100}%;background:${color};"></div></div>
+    <div class="kv" style="margin-top:10px;"><span class="k">Confidence</span><span class="v">${e.conf.toFixed(2)}</span></div>
+    <div class="conf-bar-wrap"><div class="conf-bar" style="width:${e.conf*100}%;background:var(--indigo-soft);"></div></div>
+    <div class="kv" style="margin-top:10px;"><span class="k">Reversibility</span><span class="v" style="font-family:'IBM Plex Sans';font-weight:500;">${lockIcon} ${e.rev}</span></div>
+  `;
+
+  document.getElementById("panel-mechanism").innerHTML = e.mech.map(([name,val])=>`
+    <div class="prog-row">
+      <div class="prow-top"><span class="name">${name}</span><span class="val">${val.toFixed(2)}</span></div>
+      <div class="prog-track"><div class="prog-fill" style="width:${val*100}%;"></div></div>
+    </div>
+  `).join("");
+
+  document.getElementById("panel-evidence").innerHTML = e.evid.map(([title,meta])=>`
+    <div class="evidence-item"><div class="e-title">${title}</div><div class="e-meta">${meta}</div></div>
+  `).join("");
+
+  setTab("transition");
+}
+
+function setTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
+  document.querySelectorAll(".tab-panel").forEach(p=>p.classList.toggle("active", p.id===`panel-${name}`));
+}
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>setTab(t.dataset.tab)));
+document.querySelectorAll(".tree-node.state").forEach(n=>n.addEventListener("click", ()=>selectNode(n.dataset.state)));
+
+/* ---------------- layer tabs (Transcriptomic / ATAC / Epigenetic) ---------------- */
+document.querySelectorAll(".layer-tab").forEach(t=>{
+  t.addEventListener("click", ()=>{
+    document.querySelectorAll(".layer-tab").forEach(x=>x.classList.toggle("active", x===t));
+    const layer = t.dataset.layer;
+    document.querySelectorAll(".layer-view").forEach(v=>v.classList.remove("active"));
+    document.getElementById(`view-${layer}`).classList.add("active");
+  });
+});
+
+/* ---------------- intervention filter chips ---------------- */
+document.querySelectorAll(".chip").forEach(chip=>{
+  chip.addEventListener("click", ()=>{ chip.classList.toggle("on"); applyFilters(); });
+});
+function applyFilters(){
+  const active = new Set([...document.querySelectorAll(".chip.on")].map(c=>c.dataset.cat));
+  document.querySelectorAll(".edge-path").forEach(p=>{
+    p.classList.toggle("dim", !active.has(p.dataset.cat));
+  });
+}
+
+/* ---------------- search (simple filter over tree) ---------------- */
+document.getElementById("search-input").addEventListener("input", (ev)=>{
+  const q = ev.target.value.trim().toLowerCase();
+  document.querySelectorAll(".tree-node.state").forEach(n=>{
+    n.style.display = (!q || n.textContent.toLowerCase().includes(q)) ? "" : "none";
+  });
+});
+
+/* ---------------- browse / predict mode ---------------- */
+const modeBrowse = document.getElementById("mode-browse");
+const modePredict = document.getElementById("mode-predict");
+modeBrowse.addEventListener("click", ()=>{
+  modeBrowse.classList.add("active"); modePredict.classList.remove("active");
+  document.getElementById("framing-browse").style.display = "flex";
+  document.getElementById("framing-predict").style.display = "none";
+});
+modePredict.addEventListener("click", ()=>{
+  modePredict.classList.add("active"); modeBrowse.classList.remove("active");
+  document.getElementById("framing-browse").style.display = "none";
+  document.getElementById("framing-predict").style.display = "flex";
+});
+
+const srcSel = document.getElementById("predict-source");
+const dstSel = document.getElementById("predict-target");
+Object.entries(states).forEach(([key,s])=>{
+  srcSel.add(new Option(s.label, key));
+  dstSel.add(new Option(s.label, key));
+});
+srcSel.value = "diseased";
+dstSel.value = "healthy";
+
+document.getElementById("predict-run").addEventListener("click", ()=>{
+  const src = srcSel.value, dst = dstSel.value;
+  const matches = edges.filter(e=>e.src===src && e.dst===dst);
+  document.querySelectorAll(".layer-tab").forEach(x=>x.classList.toggle("active", x.dataset.layer==="transcriptomic"));
+  document.querySelectorAll(".layer-view").forEach(v=>v.classList.remove("active"));
+  document.getElementById("view-transcriptomic").classList.add("active");
+  modeBrowse.click();
+  if(matches.length){
+    selectEdge(matches[0].id);
+  } else {
+    clearSelection();
+    document.getElementById("panel-transition").innerHTML = `
+      <h3 class="drawer-title">${states[src].label} → ${states[dst].label}</h3>
+      <p class="drawer-sub">No direct transition on file</p>
+      <p style="font-size:11.8px;color:var(--ink-soft);">
+        No single intervention currently links these two states directly. In a real engine, this is where
+        the ranking model would propose a multi-step route or a novel candidate instead of a lookup miss.
+      </p>`;
+    setTab("transition");
+  }
+});
+
+/* default view */
+selectNode("diseased");
+
+
+/* ================================================================
+   Lightweight SVG isotherm/heatmap engine — same tech as the working
+   transcriptomic graph (pure SVG, no canvas), used by the ATAC and
+   Epigenetic-marks tabs so they share the exact same rendering path.
+   ================================================================ */
+function hexToRgb(hex){
+  const v = hex.replace("#","");
+  return [parseInt(v.substring(0,2),16), parseInt(v.substring(2,4),16), parseInt(v.substring(4,6),16)];
+}
+function lerpColor(hexA, hexB, t){
+  const a = hexToRgb(hexA), b = hexToRgb(hexB);
+  return [
+    Math.round(a[0]+(b[0]-a[0])*t),
+    Math.round(a[1]+(b[1]-a[1])*t),
+    Math.round(a[2]+(b[2]-a[2])*t),
+  ];
+}
+function paletteColor(stops, t){
+  const n = stops.length-1;
+  t = Math.max(0, Math.min(1,t));
+  const idx = Math.min(n-1, Math.floor(t*n));
+  return lerpColor(stops[idx], stops[idx+1], t*n-idx);
+}
+
+function buildIsothermSVG(mountEl, basins, opts){
+  const o = Object.assign({xMin:-6,xMax:6,yMin:-5,yMax:5,baseline:0.15,
+    palette:["#fdfefe","#dff2f0","#a8dadc","#6ea6bf","#457b9d","#1d3557"],
+    annotations:[], caption:""}, opts);
+
+  function zAt(x,y){
+    let z = o.baseline;
+    for(const b of basins) z += b.depth*Math.exp(-(((x-b.x)**2+(y-b.y)**2)/(2*b.r*b.r)));
+    return z;
+  }
+
+  const W = 620, H = 400, cols = 46, rows = 30;
+  let zMin = Infinity, zMax = -Infinity;
+  const grid = [];
+  for(let j=0;j<rows;j++){
+    const row = [];
+    const y = o.yMax - (j/(rows-1))*(o.yMax-o.yMin);
+    for(let i=0;i<cols;i++){
+      const x = o.xMin + (i/(cols-1))*(o.xMax-o.xMin);
+      const z = zAt(x,y);
+      if(z<zMin) zMin=z; if(z>zMax) zMax=z;
+      row.push(z);
+    }
+    grid.push(row);
+  }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS,"svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("class","iso-svg");
+
+  const defs = document.createElementNS(svgNS,"defs");
+  const marker = document.createElementNS(svgNS,"marker");
+  marker.setAttribute("id","iso-arrow-"+Math.random().toString(36).slice(2,8));
+  marker.setAttribute("viewBox","0 0 10 10");
+  marker.setAttribute("refX","8"); marker.setAttribute("refY","5");
+  marker.setAttribute("markerWidth","7"); marker.setAttribute("markerHeight","7");
+  marker.setAttribute("orient","auto");
+  const markerPath = document.createElementNS(svgNS,"path");
+  markerPath.setAttribute("d","M0,0 L10,5 L0,10 z");
+  markerPath.setAttribute("fill","#33404f");
+  marker.appendChild(markerPath);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+  const markerId = marker.id;
+
+  const cw = W/cols, ch = H/rows;
+  for(let j=0;j<rows;j++){
+    for(let i=0;i<cols;i++){
+      const t = (grid[j][i]-zMin)/((zMax-zMin)||1);
+      const c = paletteColor(o.palette, t);
+      const rect = document.createElementNS(svgNS,"rect");
+      rect.setAttribute("x", (i*cw).toFixed(1));
+      rect.setAttribute("y", (j*ch).toFixed(1));
+      rect.setAttribute("width", (cw+0.7).toFixed(1));
+      rect.setAttribute("height", (ch+0.7).toFixed(1));
+      rect.setAttribute("fill", `rgb(${c[0]},${c[1]},${c[2]})`);
+      svg.appendChild(rect);
+    }
+  }
+
+  basins.forEach(b=>{
+    const px = (b.x-o.xMin)/(o.xMax-o.xMin)*W;
+    const py = H - (b.y-o.yMin)/(o.yMax-o.yMin)*H;
+    const dot = document.createElementNS(svgNS,"circle");
+    dot.setAttribute("cx", px); dot.setAttribute("cy", py); dot.setAttribute("r","5.5");
+    dot.setAttribute("fill","#ffffff"); dot.setAttribute("stroke","#1b2430"); dot.setAttribute("stroke-width","1.8");
+    svg.appendChild(dot);
+
+    const label = document.createElementNS(svgNS,"text");
+    label.setAttribute("x", px); label.setAttribute("y", py-11);
+    label.setAttribute("text-anchor","middle");
+    label.setAttribute("font-size","10.5"); label.setAttribute("font-weight","700");
+    label.setAttribute("fill","#1b2430");
+    label.setAttribute("style","font-family:'Source Serif 4', serif;");
+    label.textContent = b.short || b.label;
+    svg.appendChild(label);
+  });
+
+  (o.annotations||[]).forEach(a=>{
+    const p1x = (a.from[0]-o.xMin)/(o.xMax-o.xMin)*W, p1y = H-(a.from[1]-o.yMin)/(o.yMax-o.yMin)*H;
+    const p2x = (a.to[0]-o.xMin)/(o.xMax-o.xMin)*W, p2y = H-(a.to[1]-o.yMin)/(o.yMax-o.yMin)*H;
+    const line = document.createElementNS(svgNS,"line");
+    line.setAttribute("x1",p1x); line.setAttribute("y1",p1y);
+    line.setAttribute("x2",p2x); line.setAttribute("y2",p2y);
+    line.setAttribute("stroke", a.color); line.setAttribute("stroke-width","2.2");
+    line.setAttribute("marker-end", `url(#${markerId})`);
+    svg.appendChild(line);
+
+    const mx = (p1x+p2x)/2, my = (p1y+p2y)/2;
+    const txt = document.createElementNS(svgNS,"text");
+    txt.setAttribute("x",mx); txt.setAttribute("y",my-8);
+    txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","9");
+    txt.setAttribute("style","font-family:'IBM Plex Mono', monospace; font-style:italic; font-weight:700;");
+    txt.setAttribute("fill", a.color);
+    txt.textContent = a.label;
+    svg.appendChild(txt);
+  });
+
+  const wrap = document.createElement("div");
+  wrap.className = "landscape-wrap";
+  const isoWrap = document.createElement("div");
+  isoWrap.className = "iso-wrap";
+  isoWrap.appendChild(svg);
+  wrap.appendChild(isoWrap);
+  if(o.caption){
+    const cap = document.createElement("p");
+    cap.className = "ls-caption";
+    cap.innerHTML = o.caption;
+    wrap.appendChild(cap);
+  }
+  mountEl.appendChild(wrap);
+}
+
+function randVals(n, base, seed){
+  const arr = [];
+  let s = seed || 1;
+  const rand = () => { s = (s*9301+49297) % 233280; return s/233280; };
+  for(let i=0;i<n;i++) arr.push(Math.max(0.06, base + (rand()-0.5)*0.5));
+  return arr;
+}
+
+function buildEpiMock(mountEl, tracks, opts){
+  const card = document.createElement("div");
+  card.className = "epi-mock";
+  const wm = document.createElement("div");
+  wm.className = "watermark";
+  wm.textContent = "MOCKUP — NOT YET MODELED";
+  card.appendChild(wm);
+
+  tracks.forEach(tr=>{
+    const trackDiv = document.createElement("div");
+    trackDiv.className = "epi-track";
+    const lbl = document.createElement("div");
+    lbl.className = "epi-track-label";
+    lbl.textContent = tr.label;
+    trackDiv.appendChild(lbl);
+    const bars = document.createElement("div");
+    bars.className = "epi-bars";
+    tr.values.forEach(v=>{
+      const bar = document.createElement("span");
+      bar.style.height = `${Math.max(6, v*100)}%`;
+      if(tr.color) bar.style.background = tr.color;
+      bars.appendChild(bar);
+    });
+    trackDiv.appendChild(bars);
+    card.appendChild(trackDiv);
+  });
+  mountEl.appendChild(card);
+
+  if(opts && opts.caption){
+    const cap = document.createElement("p");
+    cap.className = "ls-caption";
+    cap.innerHTML = opts.caption;
+    mountEl.appendChild(cap);
+  }
+}
+
+/* ---- shared basin geometry (same layout as the transcriptomic map) ---- */
+const basinLayout = [
+  {x:-3.0, y: 2.0, r:1.1, label:"Quiescent fibroblast", short:"Healthy", depth:1.00},
+  {x:-3.2, y:-2.0, r:1.0, label:"iPSC-like progenitor", short:"Stem-like", depth:0.80},
+  {x: 3.0, y: 2.2, r:1.0, label:"TGF-\u03b2-activated myofibroblast", short:"Diseased", depth:1.05},
+  {x: 2.6, y:-2.4, r:0.9, label:"p16\u207a senescent fibroblast", short:"Senescent", depth:0.75},
+  {x: 0.2, y: 0.1, r:0.8, label:"Apoptosis-resistant fibroblast", short:"Resistant", depth:0.55},
+  {x: 3.4, y:-0.2, r:0.9, label:"Partially reprogrammed", short:"Reprogr.", depth:0.65},
+];
+
+/* ATAC: chromatin accessibility isotherm map */
+buildIsothermSVG(document.getElementById("atac-mount"), basinLayout, {
+  palette:["#fdfefe","#e8f6f1","#bfe6da","#7cc0b8","#3f8fa6","#1d3557"],
+  baseline:0.12,
+  annotations:[
+    {from:[3.0,2.2], to:[0.4,0.6], label:"COL1A1 enhancer \u2014 closing", color:"#9c3040"},
+    {from:[2.6,-2.4], to:[3.0,-0.6], label:"POU5F1 (OCT4) enhancer \u2014 priming open", color:"#187a68"},
+    {from:[0.2,0.1], to:[1.3,-1.5], label:"TIMP1 promoter \u2014 stays open", color:"#a86f1f"},
+  ],
+  caption:"Height/color = relative chromatin accessibility. Same six fibroblast states as the transcriptomic map \u2014 this is the regulatory-foresight layer sitting underneath it.",
+});
+
+/* Histone acetylation — mockup bar tracks at named loci */
+buildEpiMock(document.getElementById("epi-acetylation-mount"), [
+  {label:"COL1A1 locus \u2014 H3K27ac", color:"#187a68", values: randVals(22, 0.34, 11)},
+  {label:"IL6 locus \u2014 H3K27ac", color:"#187a68", values: randVals(22, 0.30, 22)},
+  {label:"CDKN2A (p16) locus \u2014 H3K27ac", color:"#187a68", values: randVals(22, 0.27, 33)},
+  {label:"POU5F1 (OCT4) locus \u2014 H3K27ac", color:"#187a68", values: randVals(22, 0.33, 44)},
+], {
+  caption:"<strong>Mockup data</strong> \u2014 illustrative H3K27ac-style openness, not fit to real ChIP-seq/ATAC signal yet."
+});
+
+/* DNA methylation — mockup CpG beta-value tracks */
+buildEpiMock(document.getElementById("epi-methylation-mount"), [
+  {label:"CDKN2A (p16) locus \u2014 CpG \u03b2-value", color:"#a86f1f", values: randVals(22, 0.55, 55)},
+  {label:"COL1A1 promoter \u2014 CpG \u03b2-value", color:"#a86f1f", values: randVals(22, 0.20, 66)},
+  {label:"POU5F1 (OCT4) locus \u2014 CpG \u03b2-value", color:"#a86f1f", values: randVals(22, 0.40, 77)},
+], {
+  caption:"<strong>Mockup data</strong> \u2014 illustrative CpG \u03b2-values (higher = more methylated / closed), not fit to real WGBS/EM-seq data yet."
+});
+
+/* epigenetic sub-tabs */
+document.querySelectorAll(".epi-subtab").forEach(t=>{
+  t.addEventListener("click", ()=>{
+    document.querySelectorAll(".epi-subtab").forEach(x=>x.classList.toggle("active", x===t));
+    document.getElementById("epi-acetylation-mount").classList.toggle("active", t.dataset.epi==="acetylation");
+    document.getElementById("epi-methylation-mount").classList.toggle("active", t.dataset.epi==="methylation");
+  });
+});
+
+</script>
+</body>
+</html>
